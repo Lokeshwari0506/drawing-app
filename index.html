@@ -1,0 +1,160 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Supabase Draw & Save (Emotion)</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f7fa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    h2 {
+      color: #333;
+    }
+    canvas {
+      border: 2px solid #555;
+      border-radius: 8px;
+      background: #fff;
+      touch-action: none;
+      margin-top: 10px;
+    }
+    select, button {
+      padding: 8px 12px;
+      margin: 6px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+    select {
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+    button {
+      cursor: pointer;
+      color: #fff;
+    }
+    #saveBtn {
+      background: #28a745;
+    }
+    #clearBtn {
+      background: #dc3545;
+    }
+  </style>
+</head>
+<body>
+  <h2>Draw & Save</h2>
+
+  <label>Emotion:
+    <select id="emotion">
+      <option value="happy">Happy</option>
+      <option value="sad">Sad</option>
+      <option value="angry">Angry</option>
+      <option value="calm">Calm</option>
+    </select>
+  </label>
+
+  <canvas id="canvas" width="320" height="320"></canvas>
+  <div>
+    <button id="saveBtn">Save</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+
+<script>
+  // ---------- CONFIG ----------
+  const SUPABASE_URL = "https://xhdrrqfwcmrmzdbjcaae.supabase.co";   // <-- replace
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhoZHJycWZ3Y21ybXpkYmpjYWFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3OTQ4NTYsImV4cCI6MjA3MDM3MDg1Nn0.ubdlVgx2MCMmiWLz8pKbNmSSESp9NGhTpwPZeFvMVuw"; // <-- replace
+  const BUCKET = "drawing-emotion";
+
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ---------- Canvas setup ----------
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  let painting = false;
+
+  function startPosition(e) {
+    painting = true;
+    ctx.beginPath();
+    ctx.moveTo(getX(e), getY(e));
+  }
+  function draw(e) {
+    if (!painting) return;
+    ctx.lineTo(getX(e), getY(e));
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+  function endPosition() {
+    painting = false;
+  }
+  function getX(e) {
+    return e.clientX - canvas.getBoundingClientRect().left;
+  }
+  function getY(e) {
+    return e.clientY - canvas.getBoundingClientRect().top;
+  }
+
+  canvas.addEventListener('mousedown', startPosition);
+  canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('mouseup', endPosition);
+  canvas.addEventListener('mouseout', endPosition);
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    startPosition({ clientX: t.clientX, clientY: t.clientY });
+  });
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    draw({ clientX: t.clientX, clientY: t.clientY });
+  });
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    endPosition();
+  });
+
+  document.getElementById('clearBtn').onclick = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // ---------- Save flow ----------
+  async function saveDrawing() {
+    const emotion = document.getElementById('emotion').value;
+    const { data: insertData, error: insertErr } = await supabaseClient
+      .from('drawings')
+      .insert({ emotion })
+      .select()
+      .single();
+
+    if (insertErr) { alert('DB insert failed: ' + insertErr.message); return; }
+
+    const id = insertData.id;
+    const filename = `${emotion}_${id}.png`;
+    const dataUrl = canvas.toDataURL('image/png');
+    const blob = await (await fetch(dataUrl)).blob();
+
+    const { error: uploadErr } = await supabaseClient.storage
+      .from(BUCKET)
+      .upload(filename, blob, { contentType: 'image/png' });
+
+    if (uploadErr) { alert('Upload failed: ' + uploadErr.message); return; }
+
+    const { error: updateErr } = await supabaseClient
+      .from('drawings')
+      .update({ filename })
+      .eq('id', id);
+
+    if (updateErr) { console.warn('Uploaded but DB update failed:', updateErr); }
+    else { alert('Saved as ' + filename); ctx.clearRect(0, 0, canvas.width, canvas.height); }
+  }
+
+  document.getElementById('saveBtn').addEventListener('click', saveDrawing);
+</script>
+</body>
+</html>
