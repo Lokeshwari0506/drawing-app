@@ -11,9 +11,10 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: start;
       min-height: 100vh;
       margin: 0;
+      padding: 20px;
     }
     h2 {
       color: #333;
@@ -25,14 +26,14 @@
       touch-action: none;
       margin-top: 10px;
     }
-    select, button {
-      padding: 8px 12px;
-      margin: 6px;
+    select, button, input[type="color"], input[type="file"], input[type="range"] {
+      padding: 6px;
+      margin: 4px;
       border: none;
       border-radius: 6px;
-      font-size: 16px;
+      font-size: 14px;
     }
-    select {
+    select, input[type="color"], input[type="range"] {
       background: #fff;
       border: 1px solid #ccc;
     }
@@ -40,21 +41,25 @@
       cursor: pointer;
       color: #fff;
     }
-    #saveBtn {
-      background: #28a745;
-    }
-    #clearBtn {
-      background: #dc3545;
+    #saveBtn { background: #28a745; }
+    #clearBtn { background: #dc3545; }
+    #eraserBtn { background: #ff9800; }
+    #pencilBtn { background: #007bff; }
+    #uploadBtn { background: #6f42c1; }
+    #toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 10px;
     }
   </style>
 </head>
 <body>
-  <h2>Draw & Save</h2>
-<p> <p style="max-width: 500px; margin: 0 auto; font-size: 1.1em; text-align: center;">
-  Welcome! 🎨 Pick an emotion from the list, then use your mouse or finger to draw anything that represents it.
-  When you're done, click <strong>Save</strong> to store your artwork in our gallery.
-</p>
-</p>
+  <h2>🎨 Draw & Save Your Emotion</h2>
+  <p style="max-width: 500px; text-align: center;">
+    Select your emotion, choose a tool (pencil/eraser), and draw!  
+    You can also upload an existing image or paste one from your clipboard.
+  </p>
 
   <label>Emotion:
     <select id="emotion">
@@ -63,31 +68,40 @@
       <option value="angry">Angry</option>
       <option value="calm">Calm</option>
       <option value="disgust">Disgust</option>
-      <option value="Vibing">Vibing</option>
-      <option value="Fear">Fear</option>
-      <option value="Disappointment">Disappointment</option>
-      <option value="Excitement">Excitement</option>
+      <option value="vibing">Vibing</option>
+      <option value="fear">Fear</option>
+      <option value="disappointment">Disappointment</option>
+      <option value="excitement">Excitement</option>
     </select>
   </label>
 
-  <canvas id="canvas" width="320" height="320"></canvas>
-  <div>
-    <button id="saveBtn">Save</button>
-    <button id="clearBtn">Clear</button>
+  <div id="toolbar">
+    <button id="pencilBtn">✏ Pencil</button>
+    <button id="eraserBtn">🩹 Eraser</button>
+    <label>Color: <input type="color" id="colorPicker" value="#000000"></label>
+    <label>Size: <input type="range" id="sizePicker" min="1" max="20" value="3"></label>
+    <input type="file" id="imageUpload" accept="image/*" hidden>
+    <button id="uploadBtn">📤 Upload Image</button>
+    <button id="clearBtn">🗑 Clear</button>
+    <button id="saveBtn">💾 Save</button>
   </div>
+
+  <canvas id="canvas" width="320" height="320"></canvas>
 
 <script>
   // ---------- CONFIG ----------
-  const SUPABASE_URL = "https://xhdrrqfwcmrmzdbjcaae.supabase.co";   // <-- replace
+  const SUPABASE_URL = "https://xhdrrqfwcmrmzdbjcaae.supabase.co";   
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhoZHJycWZ3Y21ybXpkYmpjYWFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3OTQ4NTYsImV4cCI6MjA3MDM3MDg1Nn0.ubdlVgx2MCMmiWLz8pKbNmSSESp9NGhTpwPZeFvMVuw"; // <-- replace
   const BUCKET = "drawing-emotion";
-
   const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // ---------- Canvas setup ----------
+  // ---------- Canvas Setup ----------
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
   let painting = false;
+  let tool = 'pencil';
+  let color = document.getElementById('colorPicker').value;
+  let size = document.getElementById('sizePicker').value;
 
   function startPosition(e) {
     painting = true;
@@ -97,43 +111,64 @@
   function draw(e) {
     if (!painting) return;
     ctx.lineTo(getX(e), getY(e));
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = (tool === 'pencil') ? color : '#fff';
+    ctx.lineWidth = size;
     ctx.lineCap = 'round';
     ctx.stroke();
   }
   function endPosition() {
     painting = false;
+    ctx.beginPath();
   }
   function getX(e) {
-    return e.clientX - canvas.getBoundingClientRect().left;
+    return (e.touches ? e.touches[0].clientX : e.clientX) - canvas.getBoundingClientRect().left;
   }
   function getY(e) {
-    return e.clientY - canvas.getBoundingClientRect().top;
+    return (e.touches ? e.touches[0].clientY : e.clientY) - canvas.getBoundingClientRect().top;
   }
 
+  // Event Listeners for Drawing
   canvas.addEventListener('mousedown', startPosition);
   canvas.addEventListener('mousemove', draw);
   canvas.addEventListener('mouseup', endPosition);
   canvas.addEventListener('mouseout', endPosition);
-  canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const t = e.touches[0];
-    startPosition({ clientX: t.clientX, clientY: t.clientY });
-  });
-  canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    const t = e.touches[0];
-    draw({ clientX: t.clientX, clientY: t.clientY });
-  });
-  canvas.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    endPosition();
-  });
+  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startPosition(e); });
+  canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e); });
+  canvas.addEventListener('touchend', (e) => { e.preventDefault(); endPosition(); });
 
+  // Tool Buttons
+  document.getElementById('pencilBtn').onclick = () => { tool = 'pencil'; };
+  document.getElementById('eraserBtn').onclick = () => { tool = 'eraser'; };
+  document.getElementById('colorPicker').oninput = (e) => { color = e.target.value; };
+  document.getElementById('sizePicker').oninput = (e) => { size = e.target.value; };
+
+  // Clear Canvas
   document.getElementById('clearBtn').onclick = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // ---------- Save flow ----------
+  // Upload Image
+  document.getElementById('uploadBtn').onclick = () => document.getElementById('imageUpload').click();
+  document.getElementById('imageUpload').onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const img = new Image();
+    img.onload = () => { ctx.drawImage(img, 0, 0, canvas.width, canvas.height); };
+    img.src = URL.createObjectURL(file);
+  };
+
+  // Paste from Clipboard
+  window.addEventListener('paste', (e) => {
+    const items = e.clipboardData.items;
+    for (let item of items) {
+      if (item.type.indexOf('image') !== -1) {
+        const file = item.getAsFile();
+        const img = new Image();
+        img.onload = () => { ctx.drawImage(img, 0, 0, canvas.width, canvas.height); };
+        img.src = URL.createObjectURL(file);
+      }
+    }
+  });
+
+  // ---------- Save to Supabase ----------
   async function saveDrawing() {
     const emotion = document.getElementById('emotion').value;
     const { data: insertData, error: insertErr } = await supabaseClient
@@ -151,19 +186,14 @@
 
     const { error: uploadErr } = await supabaseClient.storage
       .from(BUCKET)
-      .upload(filename, blob, { contentType: 'image/png' });
+      .upload(filename, blob, { contentType: 'image/jpeg' });
 
     if (uploadErr) { alert('Upload failed: ' + uploadErr.message); return; }
 
-    const { error: updateErr } = await supabaseClient
-      .from('drawings')
-      .update({ filename })
-      .eq('id', id);
-
-    if (updateErr) { console.warn('Uploaded but DB update failed:', updateErr); }
-    else { alert('Saved as ' + filename); ctx.clearRect(0, 0, canvas.width, canvas.height); }
+    await supabaseClient.from('drawings').update({ filename }).eq('id', id);
+    alert('Saved as ' + filename);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
-
   document.getElementById('saveBtn').addEventListener('click', saveDrawing);
 </script>
 </body>
